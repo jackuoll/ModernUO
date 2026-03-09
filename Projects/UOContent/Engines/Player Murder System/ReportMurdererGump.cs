@@ -211,7 +211,14 @@ public class ReportMurdererGump : StaticGump<ReportMurdererGump>
 
         protected override void OnTick()
         {
-            _victim.SendGump(new ReportMurdererGump(_killers));
+            if (PlayerMurderSystem.BountiesEnabled && _victim is PlayerMobile pm)
+            {
+                pm.SendGump(new BountyReportMurdererGump(pm, _killers));
+            }
+            else
+            {
+                _victim.SendGump(new ReportMurdererGump(_killers));
+            }
         }
     }
 }

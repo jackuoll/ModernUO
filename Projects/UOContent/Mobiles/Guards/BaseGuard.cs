@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using ModernUO.Serialization;
+using Server.Engines.PlayerMurderSystem;
 using Server.Items;
 
 namespace Server.Mobiles;
@@ -140,6 +141,66 @@ public abstract partial class BaseGuard : Mobile
     }
 
     public abstract void NonLethalAttack(Mobile target);
+
+    public override bool OnDragDrop(Mobile from, Item dropped)
+    {
+        if (PlayerMurderSystem.BountiesEnabled && dropped is Head head && head.PlayerName != null)
+        {
+            var target = head.BountyTarget;
+
+            if (target == null)
+            {
+                SayNonBountyHeadResponse();
+                head.Delete();
+                return true;
+            }
+
+            var bounty = PlayerMurderSystem.GetBounty(target);
+            if (bounty > 0)
+            {
+                PlayerMurderSystem.ClearBounty(target);
+                head.Delete();
+                Banker.Deposit(from, bounty);
+                Say($"The reward is {bounty} gold pieces. Here you go!");
+                return true;
+            }
+
+            Say($"There was no bounty on {target.Name}.");
+            return false;
+        }
+
+        return base.OnDragDrop(from, dropped);
+    }
+
+    private void SayNonBountyHeadResponse()
+    {
+        if (Utility.Random(5) == 0)
+        {
+            Say(Utility.Random(9) switch
+            {
+                0 => "I shall place this on my mantle!",
+                1 => "This tasteth like chicken.",
+                2 => "This tasteth just like the juicy peach I just ate.",
+                3 => "Ahh!  That was the one piece I was missing!",
+                4 => "Somehow, it reminds me of mother.",
+                5 => "It's a sign!  I can see Elvis in this!",
+                6 => "Thanks, I was missing mine.",
+                7 => "I'll put this in the lost-and-found box.",
+                _ => "My family will eat well tonight!"
+            });
+        }
+        else
+        {
+            Say(Utility.Random(7) switch
+            {
+                0 => "I really hope that wasn't intended as a bribe.",
+                1 => "I'll just be keeping this.",
+                2 => "How disgusting!  I'll dispose of this.",
+                3 or 4 or 5 => "Er... thanks.",
+                _ => "If this were the head of a murderer, I would check for a bounty."
+            });
+        }
+    }
 
     [AfterDeserialization]
     private void AfterDeserialization()

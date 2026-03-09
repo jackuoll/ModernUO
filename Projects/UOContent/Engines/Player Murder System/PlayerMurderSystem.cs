@@ -31,10 +31,13 @@ public class PlayerMurderSystem : GenericPersistence
 
     public static bool PingPongEnabled => Core.T2A && !Core.LBR;
 
+    public static bool BountiesEnabled { get; private set; }
+
     public static void Configure()
     {
         _shortTermMurderDuration = ServerConfiguration.GetOrUpdateSetting("murderSystem.shortTermMurderDuration", TimeSpan.FromHours(8));
         _longTermMurderDuration = ServerConfiguration.GetOrUpdateSetting("murderSystem.longTermMurderDuration", TimeSpan.FromHours(40));
+        BountiesEnabled = ServerConfiguration.GetOrUpdateSetting("murderSystem.bountiesEnabled", !Core.LBR);
 
         _playerMurderPersistence = new PlayerMurderSystem();
     }
@@ -171,6 +174,40 @@ public class PlayerMurderSystem : GenericPersistence
         }
 
         return context;
+    }
+
+    public static int GetBounty(PlayerMobile player) =>
+        GetMurderContext(player, out var context) ? context.Bounty : 0;
+
+    public static void AddBounty(PlayerMobile player, int amount)
+    {
+        if (GetMurderContext(player, out var context))
+        {
+            context.Bounty += amount;
+        }
+    }
+
+    public static void ClearBounty(PlayerMobile player)
+    {
+        if (GetMurderContext(player, out var context))
+        {
+            context.Bounty = 0;
+        }
+    }
+
+    public static List<(PlayerMobile Player, int Bounty)> GetActiveBounties()
+    {
+        var result = new List<(PlayerMobile Player, int Bounty)>();
+        foreach (var (player, context) in _murderContexts)
+        {
+            if (context.Bounty > 0)
+            {
+                result.Add((player, context.Bounty));
+            }
+        }
+
+        result.Sort(static (a, b) => b.Bounty.CompareTo(a.Bounty));
+        return result;
     }
 
     public static void ManuallySetPingPong(PlayerMobile player, int pingPong)

@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "type": "Server.Items.Head",
+  "properties": [
+    {
+      "name": "PlayerName",
+      "type": "string",
+      "rule": "PrimitiveTypeMigrationRule",
+      "ruleArguments": [
+        ""
+      ]
+    },
+    {
+      "name": "HeadType",
+      "type": "Server.Items.HeadType",
+      "rule": "EnumMigrationRule"
+    },
+    {
+      "name": "BountyTarget",
+      "type": "Server.Mobiles.PlayerMobile",
+      "rule": "SerializableInterfaceMigrationRule"
+    }
+  ]
+}

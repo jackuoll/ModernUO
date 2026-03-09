@@ -1,0 +1,101 @@
+using System;
+using System.Collections.Generic;
+using Server.Gumps;
+using Server.Items;
+using Server.Mobiles;
+using Server.Network;
+using Server.SkillHandlers;
+
+namespace Server.Engines.PlayerMurderSystem;
+
+public class BountyReportMurdererGump : Gump
+{
+    private readonly List<Mobile> _killers;
+    private readonly PlayerMobile _victim;
+    private int _idx;
+
+    public BountyReportMurdererGump(PlayerMobile victim, List<Mobile> killers, int idx = 0) : base(0, 0)
+    {
+        _victim = victim;
+        _killers = killers;
+        _idx = idx;
+
+        Closable = false;
+        Resizable = false;
+
+        BuildGump();
+    }
+
+    private void BuildGump()
+    {
+        AddBackground(265, 205, 393, 270, 70000);
+        AddImage(265, 205, 1140);
+
+        AddPage(0);
+
+        AddHtml(325, 255, 300, 60,
+            "<BIG>Would you like to report " + _killers[_idx].Name + " as a murderer?</BIG>");
+
+        var bountyMax = Banker.GetBalance(_victim);
+
+        if (_killers[_idx].Kills >= 4 && bountyMax > 0)
+        {
+            AddHtml(325, 325, 300, 60, "<BIG>Optional Bounty: [" + bountyMax + " max] </BIG>");
+            AddImage(323, 343, 0x475);
+            AddTextEntry(329, 346, 311, 16, 0, 1, "");
+        }
+
+        AddButton(385, 395, 0x47B, 0x47D, 1, GumpButtonType.Reply, 0);
+        AddButton(465, 395, 0x478, 0x47A, 2, GumpButtonType.Reply, 0);
+    }
+
+    public override void OnResponse(NetState state, in RelayInfo info)
+    {
+        var from = (PlayerMobile)state.Mobile;
+
+        if (info.ButtonID == 1)
+        {
+            var killer = _killers[_idx];
+            if (killer?.Deleted == false && killer is PlayerMobile pk)
+            {
+                var wasMurderer = killer.Murderer;
+                PlayerMurderSystem.OnPlayerMurder(pk);
+
+                pk.SendLocalizedMessage(1049067); // You have been reported for murder!
+
+                if (!wasMurderer && killer.Murderer)
+                {
+                    pk.SendLocalizedMessage(502134); // You are now known as a murderer!
+                }
+
+                if (Stealing.SuspendOnMurder && pk.Kills == 1 && pk.NpcGuild == NpcGuild.ThievesGuild)
+                {
+                    pk.SendLocalizedMessage(501562); // You have been suspended by the Thieves Guild.
+                }
+
+                var text = info.GetTextEntry(1);
+                if (!string.IsNullOrWhiteSpace(text) && int.TryParse(text, out var requested) && requested > 0)
+                {
+                    var bounty = Math.Min(requested, Banker.GetBalance(from));
+                    if (bounty > 0 && Banker.Withdraw(from, bounty))
+                    {
+                        PlayerMurderSystem.AddBounty(pk, bounty);
+
+                        pk.SendMessage(
+                            $"{from.Name} has placed a bounty of {bounty} {(bounty == 1 ? "gold piece" : "gold pieces")} on your head!"
+                        );
+                        pk.Say(500546); // I am now bounty hunted!
+
+                        from.SendMessage($"You place a bounty of {bounty}gp on {pk.Name}'s head.");
+                    }
+                }
+            }
+        }
+
+        _idx++;
+        if (_idx < _killers.Count)
+        {
+            from.SendGump(new BountyReportMurdererGump(from, _killers, _idx));
+        }
+    }
+}
