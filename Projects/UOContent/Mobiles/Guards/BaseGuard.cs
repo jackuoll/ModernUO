@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using ModernUO.Serialization;
 using Server.Engines.PlayerMurderSystem;
 using Server.Items;
+using Server.Misc;
 
 namespace Server.Mobiles;
 
@@ -148,57 +149,66 @@ public abstract partial class BaseGuard : Mobile
         {
             var target = head.BountyTarget;
 
-            if (target == null)
+            if (target == null || Core.Now - head.Created > TimeSpan.FromHours(24))
             {
                 SayNonBountyHeadResponse();
                 head.Delete();
                 return true;
             }
 
-            var bounty = PlayerMurderSystem.GetBounty(target);
-            if (bounty > 0)
-            {
-                PlayerMurderSystem.ClearBounty(target);
-                head.Delete();
-                Banker.Deposit(from, bounty);
-                Say($"The reward is {bounty} gold pieces. Here you go!");
-                return true;
-            }
+            Say(500670); // Ah, a head!  Let me check to see if there is a bounty on this.
+            head.Delete();
 
-            Say($"There was no bounty on {target.Name}.");
-            return false;
+            Timer.DelayCall(TimeSpan.FromSeconds(10), ClaimBounty, from, this, target);
+            return true;
         }
 
         return base.OnDragDrop(from, dropped);
+    }
+
+    private static void ClaimBounty(Mobile from, BaseGuard guard, PlayerMobile target)
+    {
+        var bounty = PlayerMurderSystem.GetBounty(target);
+        var guardNearby = !guard.Deleted && from.InRange(guard, 10);
+
+        if (bounty > 0)
+        {
+            PlayerMurderSystem.ClearBounty(target);
+            Banker.Deposit(from, bounty);
+            Titles.AwardKarma(from, 2000, true);
+
+            var msg = $"{target.Name}\t{bounty}";
+            if (guardNearby)
+            {
+                guard.Say(1042855, msg); // The bounty on ~1_PLAYER_NAME~ was ~2_AMOUNT~ gold, and has been credited to your account.
+            }
+            else
+            {
+                from.SendLocalizedMessage(1042855, msg);
+            }
+        }
+        else
+        {
+            if (guardNearby)
+            {
+                guard.Say(1042854, target.Name); // There was no bounty on ~1_PLAYER_NAME~.
+            }
+            else
+            {
+                from.SendLocalizedMessage(1042854, target.Name);
+            }
+        }
     }
 
     private void SayNonBountyHeadResponse()
     {
         if (Utility.Random(5) == 0)
         {
-            Say(Utility.Random(9) switch
-            {
-                0 => "I shall place this on my mantle!",
-                1 => "This tasteth like chicken.",
-                2 => "This tasteth just like the juicy peach I just ate.",
-                3 => "Ahh!  That was the one piece I was missing!",
-                4 => "Somehow, it reminds me of mother.",
-                5 => "It's a sign!  I can see Elvis in this!",
-                6 => "Thanks, I was missing mine.",
-                7 => "I'll put this in the lost-and-found box.",
-                _ => "My family will eat well tonight!"
-            });
+            Say(500661 + Utility.Random(9)); // 500661–500669: silly guard responses
         }
         else
         {
-            Say(Utility.Random(7) switch
-            {
-                0 => "I really hope that wasn't intended as a bribe.",
-                1 => "I'll just be keeping this.",
-                2 => "How disgusting!  I'll dispose of this.",
-                3 or 4 or 5 => "Er... thanks.",
-                _ => "If this were the head of a murderer, I would check for a bounty."
-            });
+            Say(500654 + Utility.Random(7)); // 500654–500660: normal guard responses
         }
     }
 

@@ -15,9 +15,22 @@ public partial class BountyBoard : BaseBulletinBoard
         BoardName = "bounty board";
     }
 
+    public override void OnSingleClick(Mobile from)
+    {
+        var count = PlayerMurderSystem.GetActiveBounties().Count;
+        if (count > 0)
+        {
+            LabelTo(from, $"a bounty board with {count} posted {(count == 1 ? "bounty" : "bounties")}");
+        }
+        else
+        {
+            LabelTo(from, 1042679); // a bounty board with no bounties posted.
+        }
+    }
+
     public override void PostMessage(Mobile from, BulletinMessage thread, string subject, string[] lines)
     {
-        from.SendMessage("Thou canst not post to this board.");
+        from.SendLocalizedMessage(1062398); // You are not allowed to post to this bulletin board.
     }
 
     public override void OnDoubleClick(Mobile from)
