@@ -1,4 +1,5 @@
 using ModernUO.Serialization;
+using Server.Mobiles;
 
 namespace Server.Items
 {
@@ -9,7 +10,7 @@ namespace Server.Items
         Tournament
     }
 
-    [SerializationGenerator(1, false)]
+    [SerializationGenerator(2, false)]
     public partial class Head : Item
     {
         [InvalidateProperties]
@@ -21,6 +22,10 @@ namespace Server.Items
         [SerializableField(1)]
         [SerializedCommandProperty(AccessLevel.GameMaster)]
         private HeadType _headType;
+
+        [SerializableField(2)]
+        [SerializedCommandProperty(AccessLevel.GameMaster)]
+        private PlayerMobile _bountyTarget;
 
         [Constructible]
         public Head(string playerName) : this(HeadType.Regular, playerName)
@@ -56,6 +61,15 @@ namespace Server.Items
         {
             _playerName = reader.ReadString();
             _headType = (HeadType)reader.ReadEncodedInt();
+            // _bountyTarget defaults to null
         }
+
+        private void MigrateFrom(V1Content content)
+        {
+            _playerName = content.PlayerName;
+            _headType = content.HeadType;
+            // _bountyTarget defaults to null
+        }
+
     }
 }
