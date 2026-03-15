@@ -42,7 +42,7 @@ public class BulletinBoardPacketTests
         var bb = new TestBulletinBoard(0x234);
         bb.PostMessage(poster, null, subject, lines);
 
-        var msg = bb.Items[0] as BulletinMessage;
+        var msg = bb.Messages[0];
 
         var expected = (content ?
             (Packet)new BBMessageContent(bb, msg) : new BBMessageHeader(bb, msg)).Compile();

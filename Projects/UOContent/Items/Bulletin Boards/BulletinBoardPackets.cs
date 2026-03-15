@@ -77,7 +77,9 @@ namespace Server.Network
 
         public static void BBRequestContent(Mobile from, BaseBulletinBoard board, SpanReader reader)
         {
-            if (World.FindItem((Serial)reader.ReadUInt32()) is not BulletinMessage msg || msg.Parent != board)
+            var msg = BulletinMessagePersistence.Find((Serial)reader.ReadUInt32());
+
+            if (msg == null || msg.Board != board)
             {
                 return;
             }
@@ -87,7 +89,9 @@ namespace Server.Network
 
         public static void BBRequestHeader(Mobile from, BaseBulletinBoard board, SpanReader reader)
         {
-            if (World.FindItem((Serial)reader.ReadUInt32()) is not BulletinMessage msg || msg.Parent != board)
+            var msg = BulletinMessagePersistence.Find((Serial)reader.ReadUInt32());
+
+            if (msg == null || msg.Board != board)
             {
                 return;
             }
@@ -97,9 +101,9 @@ namespace Server.Network
 
         public static void BBPostMessage(Mobile from, BaseBulletinBoard board, SpanReader reader)
         {
-            var thread = World.FindItem((Serial)reader.ReadUInt32()) as BulletinMessage;
+            var thread = BulletinMessagePersistence.Find((Serial)reader.ReadUInt32());
 
-            if (thread != null && thread.Parent != board)
+            if (thread != null && thread.Board != board)
             {
                 thread = null;
             }
@@ -152,7 +156,9 @@ namespace Server.Network
 
         public static void BBRemoveMessage(Mobile from, BaseBulletinBoard board, SpanReader reader)
         {
-            if (World.FindItem((Serial)reader.ReadUInt32()) is not BulletinMessage msg || msg.Parent != board)
+            var msg = BulletinMessagePersistence.Find((Serial)reader.ReadUInt32());
+
+            if (msg == null || msg.Board != board)
             {
                 return;
             }
@@ -187,6 +193,56 @@ namespace Server.Network
             var byteLength = Math.Min(29, TextEncoding.UTF8.GetBytes(textChars, textBuffer));
             writer.Write(textBuffer[..byteLength]);
             writer.Clear(30 - byteLength); // terminator
+
+            ns.Send(writer.Span);
+        }
+
+        public static void SendBBContainerContent(this NetState ns, BaseBulletinBoard board)
+        {
+            if (ns.CannotSendPackets())
+            {
+                return;
+            }
+
+            var messages = board.Messages;
+            var gridLines = ns.ContainerGridLines;
+            var entrySize = gridLines ? 20 : 19;
+
+            var writer = new SpanWriter(stackalloc byte[5 + messages.Count * entrySize]);
+            writer.Write((byte)0x3C);           // Packet ID
+            writer.Seek(4, SeekOrigin.Current); // Length & written count
+
+            var written = 0;
+
+            for (var i = 0; i < messages.Count; ++i)
+            {
+                var msg = messages[i];
+
+                if (msg.Deleted)
+                {
+                    continue;
+                }
+
+                writer.Write(msg.Serial);
+                writer.Write((ushort)0xEB0); // ItemID
+                writer.Write((byte)0);       // signed, itemID offset
+                writer.Write((ushort)0);     // Amount
+                writer.Write((short)0);      // X
+                writer.Write((short)0);      // Y
+                if (gridLines)
+                {
+                    writer.Write((byte)0); // Grid Location
+                }
+                writer.Write(board.Serial); // Parent serial
+                writer.Write((ushort)0);    // Hue
+
+                ++written;
+            }
+
+            writer.Seek(1, SeekOrigin.Begin);
+            writer.Write((ushort)writer.BytesWritten);
+            writer.Write((ushort)written);
+            writer.Seek(0, SeekOrigin.End);
 
             ns.Send(writer.Span);
         }

@@ -1,112 +1,108 @@
 using System;
 using ModernUO.Serialization;
 using Server.Collections;
-using Server.Targeting;
 
-namespace Server.Items
+namespace Server.Items;
+
+[SerializationGenerator(0)]
+public partial class BulletinMessage : ISerializable
 {
-    [SerializationGenerator(2, false)]
-    public partial class BulletinMessage : Item
+    public BulletinMessage(BaseBulletinBoard board, Mobile poster, BulletinMessage thread, string subject, string[] lines)
     {
-        public BulletinMessage(Mobile poster, BulletinMessage thread, string subject, string[] lines) : base(0xEB0)
+        Serial = BulletinMessagePersistence.NewMessage;
+
+        _board = board;
+        _poster = poster;
+        _subject = subject;
+        _time = Core.Now;
+        _lastPostTime = _time;
+        _thread = thread;
+        _postedName = poster.Name;
+        _postedBody = poster.Body;
+        _postedHue = poster.Hue;
+        _lines = lines;
+
+        using var list = PooledRefQueue<BulletinEquip>.Create(poster.Items.Count);
+
+        for (var i = 0; i < poster.Items.Count; ++i)
         {
-            Movable = false;
+            var item = poster.Items[i];
 
-            Poster = poster;
-            Subject = subject;
-            Time = Core.Now;
-            LastPostTime = Time;
-            Thread = thread;
-            PostedName = Poster.Name;
-            PostedBody = Poster.Body;
-            PostedHue = Poster.Hue;
-            Lines = lines;
-
-            using var list = PooledRefQueue<BulletinEquip>.Create(poster.Items.Count);
-
-            for (var i = 0; i < poster.Items.Count; ++i)
+            if (item.Layer >= Layer.OneHanded && item.Layer <= Layer.Mount)
             {
-                var item = poster.Items[i];
-
-                if (item.Layer >= Layer.OneHanded && item.Layer <= Layer.Mount)
-                {
-                    list.Enqueue(new BulletinEquip(item.ItemID, item.Hue));
-                }
+                list.Enqueue(new BulletinEquip(item.ItemID, item.Hue));
             }
-
-            PostedEquip = list.ToArray();
         }
 
-        [SerializableField(0)]
-        [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
-        private Mobile _poster;
+        _postedEquip = list.ToArray();
 
-        [SerializableField(1)]
-        [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
-        private string _subject;
+        BulletinMessagePersistence.Add(this);
+    }
 
-        [SerializableField(2)]
-        [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
-        private DateTime _time;
+    public DateTime Created { get; set; } = Core.Now;
+    public Serial Serial { get; }
+    public byte SerializedThread { get; set; }
+    public int SerializedPosition { get; set; }
+    public int SerializedLength { get; set; }
+    public bool Deleted { get; private set; }
 
-        [SerializableField(3)]
-        private DateTime _lastPostTime;
+    [SerializableField(0)]
+    private BaseBulletinBoard _board;
 
-        [SerializableField(4)]
-        [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
-        private BulletinMessage _thread;
+    [SerializableField(1)]
+    [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
+    private Mobile _poster;
 
-        [SerializableField(5)]
-        [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
-        private string _postedName;
+    [SerializableField(2)]
+    [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
+    private string _subject;
 
-        [SerializableField(6)]
-        private int _postedBody;
+    [SerializableField(3)]
+    [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
+    private DateTime _time;
 
-        [SerializableField(7)]
-        private int _postedHue;
+    [SerializableField(4)]
+    private DateTime _lastPostTime;
 
-        [SerializableField(8)]
-        private BulletinEquip[] _postedEquip;
+    [SerializableField(5)]
+    [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
+    private BulletinMessage _thread;
 
-        [SerializableField(9)]
-        private string[] _lines;
+    [SerializableField(6)]
+    [SerializedCommandProperty(AccessLevel.GameMaster, readOnly: true)]
+    private string _postedName;
 
-        // TODO: Memoize
-        public string GetTimeAsString() => Time.ToString("MMM dd, yyyy");
+    [SerializableField(7)]
+    private int _postedBody;
 
-        public override bool CheckTarget(Mobile from, Target targ, object targeted) => false;
+    [SerializableField(8)]
+    private int _postedHue;
 
-        public override bool IsAccessibleTo(Mobile check) => false;
+    [SerializableField(9)]
+    private BulletinEquip[] _postedEquip;
 
-        private void Deserialize(IGenericReader reader, int version)
+    [SerializableField(10)]
+    private string[] _lines;
+
+    // TODO: Memoize
+    public string GetTimeAsString() => Time.ToString("MMM dd, yyyy");
+
+    public void Delete()
+    {
+        Deleted = true;
+        _board?.Messages.Remove(this);
+        BulletinMessagePersistence.Remove(this);
+    }
+
+    [AfterDeserialization(false)]
+    private void AfterDeserialization()
+    {
+        if (_board == null || _board.Deleted)
         {
-            Poster = reader.ReadEntity<Mobile>();
-            Subject = reader.ReadString();
-            Time = reader.ReadDateTime();
-            LastPostTime = reader.ReadDateTime();
-            reader.ReadBool(); // Has thread
-            Thread = reader.ReadEntity<BulletinMessage>();
-            PostedName = reader.ReadString();
-            PostedBody = reader.ReadInt();
-            PostedHue = reader.ReadInt();
-
-            PostedEquip = new BulletinEquip[reader.ReadInt()];
-
-            for (var i = 0; i < PostedEquip.Length; ++i)
-            {
-                PostedEquip[i]._itemID = reader.ReadInt();
-                PostedEquip[i]._hue = reader.ReadInt();
-            }
-
-            Lines = new string[reader.ReadInt()];
-
-            for (var i = 0; i < Lines.Length; ++i)
-            {
-                Lines[i] = reader.ReadString();
-            }
-
-            // Moved validation/cleanup to the BB itself
+            Delete();
+            return;
         }
+
+        _board.Messages.Add(this);
     }
 }

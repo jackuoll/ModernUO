@@ -46,6 +46,8 @@ public class UOContentFixture : ICollectionFixture<UOContentFixture>, IDisposabl
         World.ExitSerializationThreads();
 
         DecayScheduler.Configure();
+
+        BulletinMessagePersistence.Configure();
     }
 
     private static int _counter;

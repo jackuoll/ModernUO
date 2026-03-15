@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using ModernUO.Serialization;
 using Server.Collections;
@@ -51,26 +52,29 @@ namespace Server.Items
         [SerializedCommandProperty(AccessLevel.GameMaster)]
         private string _boardName;
 
+        public List<BulletinMessage> Messages { get; } = [];
+
         public BaseBulletinBoard(int itemID) : base(itemID)
         {
             BoardName = "bulletin board";
             Movable = false;
         }
 
-        [AfterDeserialization(false)]
         public void Cleanup()
         {
-            var items = Items;
-            var queue = PooledRefQueue<Item>.Create();
+            var messages = Messages;
+            var queue = PooledRefQueue<BulletinMessage>.Create();
 
-            for (var i = items.Count - 1; i >= 0; --i)
+            for (var i = messages.Count - 1; i >= 0; --i)
             {
-                if (i >= items.Count)
+                if (i >= messages.Count)
                 {
                     continue;
                 }
 
-                if (items[i] is not BulletinMessage msg || msg.Deleted)
+                var msg = messages[i];
+
+                if (msg.Deleted)
                 {
                     continue;
                 }
@@ -84,7 +88,7 @@ namespace Server.Items
 
             while (queue.Count > 0)
             {
-                var msg = (BulletinMessage)queue.Dequeue();
+                var msg = queue.Dequeue();
                 RecurseDelete(msg, ref queue);
                 msg.Delete();
             }
@@ -92,19 +96,20 @@ namespace Server.Items
             queue.Dispose();
         }
 
-        private void RecurseDelete(BulletinMessage msg, ref PooledRefQueue<Item> queue)
+        private void RecurseDelete(BulletinMessage msg, ref PooledRefQueue<BulletinMessage> queue)
         {
-            var items = Items;
+            var messages = Messages;
 
-            // All messages and sub-threads are also in the same bulletin board container
-            for (var i = items.Count - 1; i >= 0; --i)
+            for (var i = messages.Count - 1; i >= 0; --i)
             {
-                if (i >= items.Count)
+                if (i >= messages.Count)
                 {
                     continue;
                 }
 
-                if (items[i] is not BulletinMessage check || check.Deleted)
+                var check = messages[i];
+
+                if (check.Deleted)
                 {
                     continue;
                 }
@@ -119,12 +124,14 @@ namespace Server.Items
         public virtual bool GetLastPostTime(Mobile poster, bool onlyCheckRoot, out DateTime lastPostTime)
         {
             lastPostTime = DateTime.MinValue;
-            var items = Items;
+            var messages = Messages;
             var wasSet = false;
 
-            for (var i = 0; i < items.Count; ++i)
+            for (var i = 0; i < messages.Count; ++i)
             {
-                if (items[i] is not BulletinMessage msg || msg.Poster != poster)
+                var msg = messages[i];
+
+                if (msg.Poster != poster)
                 {
                     continue;
                 }
@@ -157,7 +164,7 @@ namespace Server.Items
             var state = from.NetState;
 
             state.SendBBDisplayBoard(this);
-            state.SendContainerContent(from, this);
+            state.SendBBContainerContent(this);
         }
 
         public virtual bool CheckRange(Mobile from) =>
@@ -170,7 +177,18 @@ namespace Server.Items
                 thread.LastPostTime = Core.Now;
             }
 
-            AddItem(new BulletinMessage(from, thread, subject, lines));
+            var msg = new BulletinMessage(this, from, thread, subject, lines);
+            Messages.Add(msg);
+        }
+
+        public override void OnAfterDelete()
+        {
+            base.OnAfterDelete();
+
+            for (var i = Messages.Count - 1; i >= 0; --i)
+            {
+                Messages[i].Delete();
+            }
         }
     }
 }
