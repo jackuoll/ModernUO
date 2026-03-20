@@ -2,6 +2,7 @@ using System;
 using Server.Factions;
 using Server.Gumps;
 using Server.Items;
+using Server.Systems.FeatureFlags;
 using Server.Targeting;
 
 namespace Server.Engines.Craft;
@@ -71,7 +72,7 @@ public class DefTinkering : CraftSystem
 
     public override bool RetainsColorFrom(CraftItem item, Type type)
     {
-        if (!type.IsSubclassOf(typeof(BaseIngot)))
+        if (!Core.UOTD || !type.IsSubclassOf(typeof(BaseIngot)))
         {
             return false;
         }
@@ -377,7 +378,7 @@ public class DefTinkering : CraftSystem
             SetNeededExpansion(index, Expansion.SE);
         }
 
-        if (Core.UOTD)
+        if (!ContentFeatureFlags.T2ACraftMenus)
         {
             // AOS+ jewelry with gem resources
             AddJewelrySet(GemType.StarSapphire, typeof(StarSapphire));

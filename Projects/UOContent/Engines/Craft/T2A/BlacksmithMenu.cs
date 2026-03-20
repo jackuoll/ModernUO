@@ -61,7 +61,7 @@ public class BlacksmithMenu : ItemListMenu
 
     private static readonly Type[] PolearmTypes =
     [
-        typeof(Bardiche), typeof(Halberd), typeof(ShortSpear), typeof(Spear)
+        typeof(Bardiche), typeof(Halberd), typeof(WarFork), typeof(ShortSpear), typeof(Spear)
     ];
 
     private static readonly Type[] MaceTypes =
@@ -469,20 +469,45 @@ public class BlacksmithMenu : ItemListMenu
     public override void OnCancel(NetState state)
     {
         base.OnCancel(state);
-        var context = DefBlacksmithy.CraftSystem.GetContext(state.Mobile);
-        context?.LastResourceIndex = -1;
     }
 
-    public static void ResourceSelection(Mobile from, BaseTool tool, Action<Mobile, BaseTool> afterSelect)
+    public static void ResourceSelection(
+        Mobile from, BaseTool tool, Action<Mobile, BaseTool> afterSelect, Item preTarget = null
+    )
     {
         var res = DefBlacksmithy.CraftSystem.CraftSubRes;
+
+        // Validate preTarget first — reject invalid targets before any auto-selection
+        if (preTarget != null)
+        {
+            if (TrySelectResource(from, preTarget, res, afterSelect, tool))
+            {
+                // Valid ingot — resource selected, menu will open
+                return;
+            }
+
+            if (preTarget is BaseArmor or BaseWeapon
+                && DefBlacksmithy.CraftSystem.CraftItems.SearchForSubclass(preTarget.GetType()) != null)
+            {
+                // Repairable/smeltable item — auto-select default resource and open menu
+                SelectDefaultResource(from, res);
+                afterSelect(from, tool);
+                return;
+            }
+
+            // Invalid target — prompt for ingots
+            from.SendMessage("Target the ingots you wish to use.");
+            from.Target = new BlacksmithResourceTarget(tool, afterSelect);
+            return;
+        }
+
+        // No target (make-last failure path) — auto-select if only one ingot type available
         var availableCount = 0;
         var lastAvailable = -1;
 
         for (var i = 0; i < res.Count; ++i)
         {
-            var amount = from.Backpack?.GetAmount(res[i].ItemType) ?? 0;
-            if (amount > 0)
+            if ((from.Backpack?.GetAmount(res[i].ItemType) ?? 0) > 0)
             {
                 availableCount++;
                 lastAvailable = i;
@@ -504,6 +529,62 @@ public class BlacksmithMenu : ItemListMenu
             from.SendMessage("Target the ingots you wish to use.");
             from.Target = new BlacksmithResourceTarget(tool, afterSelect);
         }
+    }
+
+    private static void SelectDefaultResource(Mobile from, CraftSubResCol res)
+    {
+        var context = DefBlacksmithy.CraftSystem.GetContext(from);
+        if (context == null)
+        {
+            return;
+        }
+
+        var pack = from.Backpack;
+        var firstAvailable = -1;
+
+        for (var i = 0; i < res.Count; ++i)
+        {
+            if ((pack?.GetAmount(res[i].ItemType) ?? 0) > 0)
+            {
+                if (res[i].ItemType == typeof(IronIngot))
+                {
+                    context.LastResourceIndex = i;
+                    return;
+                }
+
+                if (firstAvailable == -1)
+                {
+                    firstAvailable = i;
+                }
+            }
+        }
+
+        if (firstAvailable != -1)
+        {
+            context.LastResourceIndex = firstAvailable;
+        }
+    }
+
+    private static bool TrySelectResource(
+        Mobile from, Item item, CraftSubResCol res, Action<Mobile, BaseTool> afterSelect, BaseTool tool
+    )
+    {
+        for (var i = 0; i < res.Count; ++i)
+        {
+            if (item.GetType() == res[i].ItemType)
+            {
+                var context = DefBlacksmithy.CraftSystem.GetContext(from);
+                if (context != null)
+                {
+                    context.LastResourceIndex = i;
+                }
+
+                afterSelect(from, tool);
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 

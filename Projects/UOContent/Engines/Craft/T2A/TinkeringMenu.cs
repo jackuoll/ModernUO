@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.CompilerServices;
 using Server.Items;
 using Server.Menus.ItemLists;
 using Server.Network;
@@ -45,7 +44,7 @@ public class TinkeringMenu : ItemListMenu
     [
         typeof(Gears), typeof(Springs), typeof(Hinge),
         typeof(ClockParts), typeof(SextantParts),
-        typeof(BarrelTap), typeof(BarrelHoops)
+        typeof(BarrelTap), typeof(BarrelHoops), typeof(AxleGears)
     ];
 
     private static readonly Type[] UtensilTypes =
@@ -66,7 +65,8 @@ public class TinkeringMenu : ItemListMenu
     [
         typeof(KeyRing), typeof(Key),
         typeof(Scales), typeof(Spyglass), typeof(Lantern), typeof(HeatingStand),
-        typeof(Globe), typeof(Candelabra)
+        typeof(Globe), typeof(Candelabra), typeof(Sextant),
+        typeof(ClockRight), typeof(ClockLeft)
     ];
 
     private static readonly Type[] NecklaceTypes = [typeof(GoldNecklace), typeof(SilverNecklace)];
@@ -321,8 +321,7 @@ public class TinkeringMenu : ItemListMenu
         if (_category is Category.Main or Category.Jewelry)
         {
             var childCategory = (Category)craftIndex;
-            var resourceType = childCategory == Category.Wood ? typeof(Log) : typeof(IronIngot);
-            var menu = new TinkeringMenu(from, _tool, childCategory, resourceType);
+            var menu = new TinkeringMenu(from, _tool, childCategory, _selectedResourceType);
             if (menu.Entries.Length == 0)
             {
                 from.SendAsciiMessage("You lack the skill and materials to craft anything in that category.");
@@ -348,6 +347,14 @@ public class TinkeringMenu : ItemListMenu
                 return;
             }
 
+            // Clear stale gem state from any previous craft attempt (e.g. failed skill check)
+            var ctx = DefTinkering.CraftSystem.GetContext(from);
+            if (ctx != null)
+            {
+                ctx.PendingGemType = GemType.None;
+                ctx.PendingGemCount = 0;
+            }
+
             from.SendAsciiMessage("Target the gemstone you wish to use.");
             from.Target = new GemSelectTarget(from, _tool, itemType, _selectedResourceType);
             return;
@@ -361,17 +368,73 @@ public class TinkeringMenu : ItemListMenu
         }
 
         var leafItemType = leafTypes[craftIndex];
-        var itemDef = DefTinkering.CraftSystem.CraftItems.SearchFor(leafItemType);
+        var system = DefTinkering.CraftSystem;
+        var itemDef = system.CraftItems.SearchFor(leafItemType);
         if (itemDef == null || _selectedResourceType == null)
         {
             return;
         }
 
-        itemDef.Craft(from, DefTinkering.CraftSystem, _selectedResourceType, _tool);
+        // Persist selected resource index so make-last remembers it
+        T2ACraftSystem.SetLastResourceIndex(from, system, _selectedResourceType);
+
+        itemDef.Craft(from, system, _selectedResourceType, _tool);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ResourceSelection(Mobile from, BaseTool tool) => from.Target = new ResourceSelectTarget(from, tool);
+    public static void ResourceSelection(Mobile from, BaseTool tool, Item preTarget = null)
+    {
+        if (preTarget != null && TrySelectResource(from, tool, preTarget))
+        {
+            return;
+        }
+
+        from.SendAsciiMessage("Select the resource you wish to use (wood or ingots).");
+        from.Target = new ResourceSelectTarget(from, tool);
+    }
+
+    private static bool TrySelectResource(Mobile from, BaseTool tool, Item targeted)
+    {
+        if (targeted is Log or Board)
+        {
+            var menu = new TinkeringMenu(from, tool, Category.Wood, typeof(Log));
+            if (menu.Entries.Length == 0)
+            {
+                from.SendAsciiMessage("You lack the skill and materials to craft anything.");
+                return true;
+            }
+
+            from.SendMenu(menu);
+            return true;
+        }
+
+        if (targeted is BaseIngot)
+        {
+            var menu = new TinkeringMenu(from, tool, Category.Main, targeted.GetType());
+            if (menu.Entries.Length == 0)
+            {
+                from.SendAsciiMessage("You lack the skill and materials to craft anything.");
+                return true;
+            }
+
+            from.SendMenu(menu);
+            return true;
+        }
+
+        if (targeted is Keg)
+        {
+            var menu = new TinkeringMenu(from, tool, Category.Keg, typeof(Keg));
+            if (menu.Entries.Length == 0)
+            {
+                from.SendAsciiMessage("You lack the skill and materials to craft anything.");
+                return true;
+            }
+
+            from.SendMenu(menu);
+            return true;
+        }
+
+        return false;
+    }
 
     private class ResourceSelectTarget : Target
     {
@@ -382,54 +445,21 @@ public class TinkeringMenu : ItemListMenu
         {
             _from = from;
             _tool = tool;
-            from.SendAsciiMessage("Select the resource you wish to use (log or iron ingot).");
         }
 
         protected override void OnTarget(Mobile from, object targeted)
         {
-            if (targeted is Log)
+            if (targeted is Item item && TrySelectResource(from, _tool, item))
             {
-                var menu = new TinkeringMenu(from, _tool, Category.Wood, typeof(Log));
-                if (menu.Entries.Length == 0)
-                {
-                    from.SendAsciiMessage("You lack the skill and materials to craft anything.");
-                    return;
-                }
+                return;
+            }
 
-                from.SendMenu(menu);
-            }
-            else if (targeted is IronIngot)
-            {
-                // Show main menu for ingot selection (includes metal categories + Jewelry)
-                var menu = new TinkeringMenu(from, _tool, Category.Main, typeof(IronIngot));
-                if (menu.Entries.Length == 0)
-                {
-                    from.SendAsciiMessage("You lack the skill and materials to craft anything.");
-                    return;
-                }
-
-                from.SendMenu(menu);
-            }
-            else if (targeted is Keg)
-            {
-                var menu = new TinkeringMenu(from, _tool, Category.Keg, typeof(Keg));
-                if (menu.Entries.Length == 0)
-                {
-                    from.SendAsciiMessage("You lack the skill and materials to craft anything.");
-                    return;
-                }
-
-                from.SendMenu(menu);
-            }
-            else
-            {
-                from.SendAsciiMessage("That is not a valid resource. Please select log or iron ingot.");
-                from.Target = new ResourceSelectTarget(_from, _tool);
-            }
+            from.SendAsciiMessage("That is not a valid resource. Please select wood or ingots.");
+            from.Target = new ResourceSelectTarget(_from, _tool);
         }
     }
 
-    private class GemSelectTarget : Target
+    internal class GemSelectTarget : Target
     {
         private readonly Mobile _from;
         private readonly BaseTool _tool;
@@ -484,6 +514,7 @@ public class TinkeringMenu : ItemListMenu
             ctx.PendingGemType = gemType;
             ctx.PendingGemCount = amount;
 
+            T2ACraftSystem.SetLastResourceIndex(from, system, _selectedResourceType);
             itemDef.Craft(from, system, _selectedResourceType, _tool);
         }
 
