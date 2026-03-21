@@ -11,19 +11,19 @@ namespace Server
     public class PoisonImpl : Poison
     {
         private readonly int m_Count;
+        private readonly int m_CountMax;
 
         // Timers
         private readonly TimeSpan m_Delay;
         private readonly TimeSpan m_Interval;
-        private readonly int m_Maximum;
         private readonly int m_MessageInterval;
-
-        // Info
 
         // Damage
         private readonly int m_Minimum;
+        private readonly int m_Maximum;
         private readonly double m_Scalar;
 
+        // AOS: min/max damage clamps
         public PoisonImpl(
             string name, int level, int min, int max, double percent, double delay, double interval, int count,
             int messageInterval
@@ -37,6 +37,33 @@ namespace Server
             m_Delay = TimeSpan.FromSeconds(delay);
             m_Interval = TimeSpan.FromSeconds(interval);
             m_Count = count;
+            m_CountMax = count;
+            m_MessageInterval = messageInterval;
+        }
+
+        // Pre-AOS: no damage clamps, fixed tick count
+        public PoisonImpl(
+            string name, int level, double percent, double delay, double interval, int count,
+            int messageInterval
+        ) : this(name, level, percent, delay, interval, count, count, messageInterval)
+        {
+        }
+
+        // Pre-AOS: no damage clamps, randomized tick count
+        public PoisonImpl(
+            string name, int level, double percent, double delay, double interval,
+            int countMin, int countMax, int messageInterval
+        )
+        {
+            Name = name;
+            Level = level;
+            m_Minimum = 0;
+            m_Maximum = int.MaxValue;
+            m_Scalar = percent * 0.01;
+            m_Delay = TimeSpan.FromSeconds(delay);
+            m_Interval = TimeSpan.FromSeconds(interval);
+            m_Count = countMin;
+            m_CountMax = countMax;
             m_MessageInterval = messageInterval;
         }
 
@@ -44,18 +71,37 @@ namespace Server
 
         public override int Level { get; }
 
+        // Damage formula from OSI source: percentage of current HP + 1 flat.
+        // The percentages are the same across all eras. Only tick timing changed.
+        //
+        // Scalars (effective, after engine halving):
+        //   Lesser 2.5%, Regular 3.33%, Greater 6.25%, Deadly 12.5%, Lethal 25%
+        //
+        // Pre-T2A: random(10,20) * strength ticks, intervals 15s/10s/10s/5s/5s
+        // T2A:     10 ticks,                       intervals 15s/10s/10s/5s/5s
+        // UOR+:    10 ticks,                       intervals 3s/3s/3s/4s/5s
         [CallPriority(10)]
         public static void Configure()
         {
-            if (!Core.UOR)
+            if (!Core.T2A)
             {
-                // UO98: HP-percentage damage, long intervals, long durations
-                //                          name       lvl min  max  scalar  delay  interval count msgInterval
-                Register(new PoisonImpl("Lesser",   0, 4, 26, 5.000,  15.0, 15.0, 15, 3));
-                Register(new PoisonImpl("Regular",  1, 5, 26, 6.670,  10.0, 10.0, 30, 3));
-                Register(new PoisonImpl("Greater",  2, 6, 26, 12.500, 10.0, 10.0, 45, 3));
-                Register(new PoisonImpl("Deadly",   3, 7, 26, 25.000, 5.0,  5.0,  60, 3));
-                Register(new PoisonImpl("Lethal",   4, 9, 26, 50.000, 5.0,  5.0,  75, 3));
+                // Pre-T2A: randomized tick counts = random(10, 20) * strength
+                //                          name       lvl scalar  delay interval cntMin cntMax msgInterval
+                Register(new PoisonImpl("Lesser",   0, 2.500,  15.0, 15.0, 10,  20,  3));
+                Register(new PoisonImpl("Regular",  1, 3.330,  10.0, 10.0, 20,  40,  3));
+                Register(new PoisonImpl("Greater",  2, 6.250,  10.0, 10.0, 30,  60,  3));
+                Register(new PoisonImpl("Deadly",   3, 12.500, 5.0,  5.0,  40,  80,  3));
+                Register(new PoisonImpl("Lethal",   4, 25.000, 5.0,  5.0,  50,  100, 3));
+            }
+            else if (!Core.UOR)
+            {
+                // T2A: fixed 10 ticks, same long intervals as pre-T2A
+                //                          name       lvl scalar  delay interval count msgInterval
+                Register(new PoisonImpl("Lesser",   0, 2.500,  15.0, 15.0, 10, 3));
+                Register(new PoisonImpl("Regular",  1, 3.330,  10.0, 10.0, 10, 3));
+                Register(new PoisonImpl("Greater",  2, 6.250,  10.0, 10.0, 10, 3));
+                Register(new PoisonImpl("Deadly",   3, 12.500, 5.0,  5.0,  10, 3));
+                Register(new PoisonImpl("Lethal",   4, 25.000, 5.0,  5.0,  10, 3));
             }
             else if (Core.AOS)
             {
@@ -67,11 +113,13 @@ namespace Server
             }
             else
             {
-                Register(new PoisonImpl("Lesser", 0, 4, 26, 2.500, 3.5, 3.0, 10, 2));
-                Register(new PoisonImpl("Regular", 1, 5, 26, 3.125, 3.5, 3.0, 10, 2));
-                Register(new PoisonImpl("Greater", 2, 6, 26, 6.250, 3.5, 3.0, 10, 2));
-                Register(new PoisonImpl("Deadly", 3, 7, 26, 12.500, 3.5, 4.0, 10, 2));
-                Register(new PoisonImpl("Lethal", 4, 9, 26, 25.000, 3.5, 5.0, 10, 2));
+                // UOR
+                //                          name       lvl scalar  delay interval count msgInterval
+                Register(new PoisonImpl("Lesser",   0, 2.500,  3.5, 3.0, 10, 2));
+                Register(new PoisonImpl("Regular",  1, 3.330,  3.5, 3.0, 10, 2));
+                Register(new PoisonImpl("Greater",  2, 6.250,  3.5, 3.0, 10, 2));
+                Register(new PoisonImpl("Deadly",   3, 12.500, 3.5, 4.0, 10, 2));
+                Register(new PoisonImpl("Lethal",   4, 25.000, 3.5, 5.0, 10, 2));
             }
         }
 
@@ -88,6 +136,7 @@ namespace Server
         {
             private readonly Mobile m_Mobile;
             private readonly PoisonImpl m_Poison;
+            private readonly int m_Count;
             private int m_Index;
             private int m_LastDamage;
 
@@ -96,34 +145,34 @@ namespace Server
                 From = m;
                 m_Mobile = m;
                 m_Poison = p;
+                m_Count = p.m_Count == p.m_CountMax
+                    ? p.m_Count
+                    : Utility.Random(p.m_Count, p.m_CountMax - p.m_Count + 1);
             }
 
             public Mobile From { get; set; }
 
             protected override void OnTick()
             {
-                if (Core.UOR)
+                if (Core.AOS && m_Poison.Level < 4 &&
+                    TransformationSpellHelper.UnderTransformation(m_Mobile, typeof(VampiricEmbraceSpell)) ||
+                    m_Poison.Level < 3 && OrangePetals.UnderEffect(m_Mobile) ||
+                    AnimalForm.UnderTransformation(m_Mobile, typeof(Unicorn)))
                 {
-                    if (Core.AOS && m_Poison.Level < 4 &&
-                        TransformationSpellHelper.UnderTransformation(m_Mobile, typeof(VampiricEmbraceSpell)) ||
-                        m_Poison.Level < 3 && OrangePetals.UnderEffect(m_Mobile) ||
-                        AnimalForm.UnderTransformation(m_Mobile, typeof(Unicorn)))
+                    if (m_Mobile.CurePoison(m_Mobile))
                     {
-                        if (m_Mobile.CurePoison(m_Mobile))
-                        {
-                            // * You feel yourself resisting the effects of the poison *
-                            m_Mobile.LocalOverheadMessage(MessageType.Emote, 0x3F, 1114441);
+                        // * You feel yourself resisting the effects of the poison *
+                        m_Mobile.LocalOverheadMessage(MessageType.Emote, 0x3F, 1114441);
 
-                            // * ~1_NAME~ seems resistant to the poison *
-                            m_Mobile.NonlocalOverheadMessage(MessageType.Emote, 0x3F, 1114442, m_Mobile.Name);
+                        // * ~1_NAME~ seems resistant to the poison *
+                        m_Mobile.NonlocalOverheadMessage(MessageType.Emote, 0x3F, 1114442, m_Mobile.Name);
 
-                            Stop();
-                            return;
-                        }
+                        Stop();
+                        return;
                     }
                 }
 
-                if (m_Index++ == m_Poison.m_Count)
+                if (m_Index++ == m_Count)
                 {
                     m_Mobile.SendLocalizedMessage(502136); // The poison seems to have worn off.
                     m_Mobile.Poison = null;
@@ -140,7 +189,7 @@ namespace Server
                 }
                 else
                 {
-                    damage = (Core.UOR ? 1 : 2) + (int)(m_Mobile.Hits * m_Poison.m_Scalar);
+                    damage = 1 + (int)(m_Mobile.Hits * m_Poison.m_Scalar);
 
                     if (damage < m_Poison.m_Minimum)
                     {
@@ -173,7 +222,7 @@ namespace Server
                 {
                     if (!Core.UOR)
                     {
-                        // UO98: level-specific bark messages
+                        // Pre-UOR: level-specific bark messages
                         var level = m_Poison.Level;
                         m_Mobile.LocalOverheadMessage(MessageType.Emote, 0x3F, 1042857 + level * 2);
                         m_Mobile.NonlocalOverheadMessage(
