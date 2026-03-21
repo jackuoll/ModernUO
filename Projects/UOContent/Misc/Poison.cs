@@ -51,11 +51,11 @@ namespace Server
             {
                 // UO98: HP-percentage damage, long intervals, long durations
                 //                          name       lvl min  max  scalar  delay  interval count msgInterval
-                Register(new PoisonImpl("Lesser",   0, 0, 999, 5.000,  15.0, 15.0, 15, 3));
-                Register(new PoisonImpl("Regular",  1, 0, 999, 6.670,  10.0, 10.0, 30, 3));
-                Register(new PoisonImpl("Greater",  2, 0, 999, 12.500, 10.0, 10.0, 45, 3));
-                Register(new PoisonImpl("Deadly",   3, 0, 999, 25.000, 5.0,  5.0,  60, 3));
-                Register(new PoisonImpl("Lethal",   4, 0, 999, 50.000, 5.0,  5.0,  75, 3));
+                Register(new PoisonImpl("Lesser",   0, 4, 26, 5.000,  15.0, 15.0, 15, 3));
+                Register(new PoisonImpl("Regular",  1, 5, 26, 6.670,  10.0, 10.0, 30, 3));
+                Register(new PoisonImpl("Greater",  2, 6, 26, 12.500, 10.0, 10.0, 45, 3));
+                Register(new PoisonImpl("Deadly",   3, 7, 26, 25.000, 5.0,  5.0,  60, 3));
+                Register(new PoisonImpl("Lethal",   4, 9, 26, 50.000, 5.0,  5.0,  75, 3));
             }
             else if (Core.AOS)
             {
