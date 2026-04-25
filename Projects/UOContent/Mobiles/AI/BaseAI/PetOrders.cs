@@ -337,7 +337,7 @@ public abstract partial class BaseAI
     {
         if (Mobile.IsDeadPet)
         {
-            return false;
+            return true;
         }
 
         if (IsInvalidControlTarget(Mobile.ControlTarget))
@@ -357,13 +357,14 @@ public abstract partial class BaseAI
     }
 
     private bool IsInvalidControlTarget(Mobile target) => target?.Deleted != false || target.Map != Mobile.Map
-        || !target.Alive || target.IsDeadBondedPet;
+        || !target.Alive || target.IsDeadBondedPet || target.Hidden;
 
     private void HandleInvalidControlTarget()
     {
         DebugSay("Target is either dead, hidden, or out of range.");
 
-        Mobile.ControlOrder = Core.AOS || Mobile.IsBonded ? OrderType.Follow : OrderType.None;
+        Mobile.ControlTarget = Mobile.ControlMaster;
+        Mobile.ControlOrder = OrderType.None;
 
         if (Mobile.FightMode is FightMode.Closest or FightMode.Aggressor)
         {
@@ -536,7 +537,7 @@ public abstract partial class BaseAI
                 // 1043248: The pet refuses to be transferred because it will not obey ~1_NAME~.~3_BLANK~
                 // 1043249: The pet will not accept you as a master because it does not trust you.~3_BLANK~
                 Mobile.ControlOrder = OrderType.None;
-                return false;
+                return true;
             }
 
             if (!Mobile.CanBeControlledBy(from))
@@ -545,7 +546,7 @@ public abstract partial class BaseAI
                 // 1043250: The pet refuses to be transferred because it will not obey you sufficiently.~3_BLANK~
                 // 1043251: The pet will not accept you as a master because it does not trust ~2_NAME~.~3_BLANK~
                 Mobile.ControlOrder = OrderType.None;
-                return false;
+                return true;
             }
 
             if (Mobile.Combatant != null || Mobile.Aggressors.Count > 0 ||
@@ -554,7 +555,7 @@ public abstract partial class BaseAI
                 from.SendMessage("You can not transfer a pet while in combat.");
                 to.SendMessage("You can not transfer a pet while in combat.");
                 Mobile.ControlOrder = OrderType.None;
-                return false;
+                return true;
             }
 
             var fromState = from.NetState;
@@ -563,7 +564,7 @@ public abstract partial class BaseAI
             if (fromState == null || toState == null)
             {
                 Mobile.ControlOrder = OrderType.None;
-                return false;
+                return true;
             }
 
             if (from.HasTrade || to.HasTrade)
@@ -573,7 +574,7 @@ public abstract partial class BaseAI
                 to.SendLocalizedMessage(1010507);
                 // You cannot transfer a pet with a trade pending
                 Mobile.ControlOrder = OrderType.None;
-                return false;
+                return true;
             }
 
             var container = fromState.AddTrade(toState);
